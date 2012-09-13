@@ -1,6 +1,5 @@
 var fs = require('fs');
-
-var data = fs.readFileSync(__dirname+'/test6.less').toString();
+var data = fs.readFileSync(__dirname+'/tests/test9.less').toString();
 
 var tree = {data:'', children:[]};
 tree.parent = tree;
@@ -13,14 +12,11 @@ var emptyLine = true;
 // split data into blocks
 for (var i=0; i<data.length; i++) {
   if (emptyLine && clean(data[i]) != '') emptyLine = false;
-  if (data[i] == '/' && (data[i+1] == '/' || i>0 && data[i-1] == '/')) {
+  if (emptyLine && data[i] == '/' && (data[i+1] == '/' || i>0 && data[i-1] == '/')) {
     isSingleComment = true;
   }
-  if (isSingleComment) {
-    if (data[i] == '\n') isSingleComment = false;
-  }
+  if (isSingleComment && data[i] == '\n') isSingleComment = false;
   if (isSingleComment) continue;
-
   if (data[i] == '\n' || data[i] == '\r') emptyLine = true;
 
   if (data[i] == '{') {
@@ -39,7 +35,7 @@ for (var i=0; i<data.length; i++) {
       cur = cur.parent.parent.children[cur.parent.parent.children.length-1];
       siblingContext = false;
     }
-    if (newAttribute && clean(data[i]) != '' && !emptyLine) {
+    if (newAttribute && clean(data[i]) != '' && !emptyLine && (!data[i] == '/' && (data[i+1] == '/' || i>0 && data[i-1] == '/'))) {
       cur.parent.children.push({parent:cur.parent});
       cur = cur.parent.children[cur.parent.children.length-1];
       newAttribute = false;
@@ -49,15 +45,6 @@ for (var i=0; i<data.length; i++) {
     cur.data += data[i];
   }
 }
-
-// console.log('\nparsed\n');
-// console.log(tree);
-
-// (function clean(tree) {
-//   if (tree.data) tree.data = clean(tree.data);
-//   if (!tree.children) return;
-//   for (var i=0; i<tree.children.length; i++) clean(tree.children[i]);
-// })(tree);
 
 (function annotate(tree) {
   if (tree.data) {
@@ -107,9 +94,6 @@ for (var i=0; i<data.length; i++) {
   }
 })(tree);
 
-// console.log('\nreordered\n');
-// console.log(tree.children[0].children[1]);
-
 function generateLess(tree, nest) {
   nest = nest || '';
   var buf = '';
@@ -128,13 +112,17 @@ function generateLess(tree, nest) {
       if (lastType == 'variable' && node.type != lastType) buf += '\n';
       if (lastType == 'attribute' && node.type == 'block') buf += '\n';
 
-      buf += nest+node.data;
+      if (node.data.indexOf('//') > -1) {
+        buf += nest+clean(node.data.split('//')[0]) + '; //' + node.data.split('//')[1];
+      } else {
+        buf += nest+node.data;
+      }
     }
 
     lastType = node.type;
 
     if (node.type != 'block') {
-      if (node.data) buf += ';';
+      if (node.data && node.data.indexOf('//') == -1) buf += ';';
       buf += '\n';
       continue;
     }
