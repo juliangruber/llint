@@ -1,58 +1,125 @@
+var start = Date.now();
+
 var fs = require('fs');
-var data = fs.readFileSync(__dirname+'/tests/test9.less').toString();
+var data = fs.readFileSync(__dirname+'/tests/theme.less').toString();
 
 var tree = {data:'', children:[]};
 tree.parent = tree;
-var cur = tree.children[0] = {parent:tree};
-var siblingContext = false;
-var newAttribute = false;
-var isSingleComment = false;
-var emptyLine = true;
+var cur = tree.children[0] = {parent:tree, data:'', children:[]};
 
-// split data into blocks
-for (var i=0; i<data.length; i++) {
-  if (emptyLine && clean(data[i]) != '') emptyLine = false;
-  if (emptyLine && data[i] == '/' && (data[i+1] == '/' || i>0 && data[i-1] == '/')) {
-    isSingleComment = true;
-  }
-  if (isSingleComment && data[i] == '\n') isSingleComment = false;
-  if (isSingleComment) continue;
-  if (data[i] == '\n' || data[i] == '\r') emptyLine = true;
+var debug = false;
 
-  if (data[i] == '{') {
-    cur.children = [];
-    cur.children.push({parent:cur});
-    cur = cur.children[0];
-  } else if (data[i] == '}') {
-    if (siblingContext) cur = cur.parent;
-    siblingContext = true;
-    newAttribute = false;
-  } else if (data[i] == ';') {
-    newAttribute = true;
-  } else if (!emptyLine && data[i] != '\n' && data[i] != '\r' && data[i] != '\t') {
-    if (siblingContext) {
-      cur.parent.parent.children.push({parent:cur.parent.parent});
-      cur = cur.parent.parent.children[cur.parent.parent.children.length-1];
-      siblingContext = false;
+var lineBlank = true;
+var skip =false;
+var comment = false;
+var multiComment = false;
+var singleComment = false;
+var newNode = false;
+var newChildNode = false;
+var levelUp = false;
+var attributeEnded = false;
+var blockEnded = false;
+
+(function parse(tree) {
+  for (var i=0; i<data.length; i++) {
+    // multi comment
+    if (lineBlank && data[i] == '/' && data[i+1] == '*') {
+      if (newNode) {
+        cur.parent.children.push({parent:cur.parent.parent, data:'', children:[]});
+        cur = cur.parent.children[cur.parent.children.length-1];
+        newNode = false;
+        if (debug) console.log('newNode');
+      }
+      comment = true;
+      multiComment = true;
+      if (debug) console.log('multiComment start');
     }
-    if (newAttribute && clean(data[i]) != '' && !emptyLine && (!data[i] == '/' && (data[i+1] == '/' || i>0 && data[i-1] == '/'))) {
-      cur.parent.children.push({parent:cur.parent});
-      cur = cur.parent.children[cur.parent.children.length-1];
-      newAttribute = false;
+    if (multiComment && data[i-1] == '/' && data[i-2] == '*') {
+      comment = false;
+      multiComment = false;
+      newNode = true;
+      if (debug) console.log('multiComment stop');
     }
 
-    cur.data = cur.data || '';
-    cur.data += data[i];
+    //if (!multiComment && (data[i] == '\r' || data[i] == '\n')) skip = true;
+
+    // single comment
+    if (!multiComment && (data[i] == '/' && data[i+1] == '/')) {
+      singleComment = true;
+      comment = true;
+      if (!lineBlank) newNode = true;
+      if (debug) console.log('singleComment start');
+    }
+    if (singleComment && (data[i] == '\n' || data[i] == '\r')) {
+      singleComment = false;
+      comment = false;
+      newNode = true;
+      if (debug) console.log('singleComment stop');
+    }
+
+    // block
+    if (!comment && data[i] == '{') {
+      skip = true;
+      newChildNode = true;
+    }
+    if (!comment && data[i] == '}') {
+      skip = true;
+      blockEnded = true;
+      newNode = true;
+    }
+    if (newChildNode) {
+      cur.children.push({parent:cur, data:'', children:[]});
+      cur = cur.children[cur.children.length-1];
+      newChildNode = false;
+      if (debug) console.log('child node created');
+    }
+    if (blockEnded) {
+      cur = cur.parent;
+      blockEnded = false;
+      newNode = true;
+      if (debug) console.log('blockEnded');
+    }
+
+    // attribute
+    if (!comment && data[i] == ';') {
+      skip = true;
+      newNode = true;
+    }
+
+    if (newNode && data[i] != ';' && data[i] != '\r' && data[i] != '\n' && data[i] != '\t' && data[i] != '}' && data[i] != ' ' && (data[i] != '/' || lineBlank)) {
+       cur.parent.children.push({parent:cur.parent, data:'', children:[]});
+       cur = cur.parent.children[cur.parent.children.length-1];
+       newNode = false;
+       if (debug) console.log('sibling Node created');
+    }
+
+    // if (newNode || !singleComment && attributeEnded && data[i] != ';' && data[i] != '\n' && data[i] != '\r' && data[i] != ' ' && (lineBlank || data[i] != '/')) {
+    //   cur.parent.children.push({parent:cur.parent, data:'', children:[]});
+    //   cur = cur.parent.children[cur.parent.children.length-1];
+    //   attributeEnded = false;
+    //   newNode = false;
+    //   if (debug) console.log('sibling Node created');
+    // }
+
+    if (!skip) cur.data += data[i];
+    if (debug) console.dir(data[i]);
+    skip = false;
+
+    if (lineBlank && data[i] != ' ' && data[i] != '\n' && data[i] != '\t') lineBlank = false;
+    if (data[i] == '\n' || data[i] == '\r') lineBlank = true;
   }
-}
+})(tree);
+
+if (debug) console.log(tree);
 
 (function annotate(tree) {
   if (tree.data) {
     tree.data = clean(tree.data);
     if (tree.data[0] == '@') tree.type = 'variable';
+    if (tree.data.search(/(\/\*|\*\/)/) > -1) tree.type = 'comment';
   }
   if (tree.children && tree.children.length) tree.type = 'block';
-  if (tree.type != 'block' && tree.type != 'variable') tree.type = 'attribute';
+  if (!tree.type) tree.type = 'attribute';
 
   if (!tree.children) return;
   for (var i=0; i<tree.children.length; i++) annotate(tree.children[i]);
@@ -112,7 +179,7 @@ function generateLess(tree, nest) {
       if (lastType == 'variable' && node.type != lastType) buf += '\n';
       if (lastType == 'attribute' && node.type == 'block') buf += '\n';
 
-      if (node.data.indexOf('//') > -1) {
+      if (node.data.indexOf('//') > 0) {
         buf += nest+clean(node.data.split('//')[0]) + '; //' + node.data.split('//')[1];
       } else {
         buf += nest+node.data;
@@ -122,12 +189,13 @@ function generateLess(tree, nest) {
     lastType = node.type;
 
     if (node.type != 'block') {
-      if (node.data && node.data.indexOf('//') == -1) buf += ';';
+      if (node.data && node.data.indexOf('//') == -1 && node.type != 'comment') buf += ';';
+      if (node.type == 'comment') buf += '\n';
       buf += '\n';
       continue;
     }
     buf += ' {\n';
-    if (node.type == 'block') buf += generateLess(node, nest+'  ');
+    if (node.type == 'block') buf += generateLess(node, nest+'    ');
     buf += nest+'}\n';
     newLine = true;
   }
@@ -138,5 +206,7 @@ console.log('');
 console.log(generateLess(tree));
 
 function clean(str) {
-  return str.replace(/^\s+|\s+$/g, '');
+  return str.replace(/^(\s|\r|\n)+|(\s|\r|\n)+$/g, '');
 }
+
+console.error('took '+(Date.now()-start)+'ms');
