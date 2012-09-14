@@ -3,6 +3,8 @@ var start = Date.now();
 var fs = require('fs');
 var data = fs.readFileSync(__dirname+'/tests/theme.less').toString();
 
+var prefixes = ['-moz-', '-o-', '-webkit-']
+
 var tree = {data:'', children:[]};
 tree.parent = tree;
 var cur = tree.children[0] = {parent:tree, data:'', children:[]};
@@ -40,8 +42,6 @@ var blockEnded = false;
       newNode = true;
       if (debug) console.log('multiComment stop');
     }
-
-    //if (!multiComment && (data[i] == '\r' || data[i] == '\n')) skip = true;
 
     // single comment
     if (!multiComment && (data[i] == '/' && data[i+1] == '/')) {
@@ -93,14 +93,6 @@ var blockEnded = false;
        if (debug) console.log('sibling Node created');
     }
 
-    // if (newNode || !singleComment && attributeEnded && data[i] != ';' && data[i] != '\n' && data[i] != '\r' && data[i] != ' ' && (lineBlank || data[i] != '/')) {
-    //   cur.parent.children.push({parent:cur.parent, data:'', children:[]});
-    //   cur = cur.parent.children[cur.parent.children.length-1];
-    //   attributeEnded = false;
-    //   newNode = false;
-    //   if (debug) console.log('sibling Node created');
-    // }
-
     if (!skip) cur.data += data[i];
     if (debug) console.dir(data[i]);
     skip = false;
@@ -148,7 +140,7 @@ if (debug) console.log(tree);
       var appendBefore = node.parent.children[b];
 
       while (appendBefore.type == 'variable' || appendBefore.type == 'attribute' &&
-        appendBefore.data < node.data
+        unprefix(appendBefore.data) < unprefix(node.data)
       ) {
         appendBefore = node.parent.children[++b];
       }
@@ -207,6 +199,11 @@ console.log(generateLess(tree));
 
 function clean(str) {
   return str.replace(/^(\s|\r|\n)+|(\s|\r|\n)+$/g, '');
+}
+
+function unprefix(str) {
+  for (var i=0; i<prefixes.length; i++) str = str.replace(prefixes[i], '');
+  return str;
 }
 
 console.error('took '+(Date.now()-start)+'ms');
