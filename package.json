@@ -1,5 +1,6 @@
 {
     "name": "llint",
     "version": "0.0.1",
-    "private": true
+    "author": "Julian Gruber <julian@juliangruber.com>",
+    "repository": "git://github.com/juliangruber/llint" 
 }
